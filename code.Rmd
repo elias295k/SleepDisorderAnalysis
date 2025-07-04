@@ -1,0 +1,496 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r load-packages, message = FALSE,warning=FALSE,include = FALSE}
+library(tidyverse)
+library(janitor)
+library(skimr)
+library(dplyr)
+library(tidymodels)
+library(nnet)
+library(corrplot)
+library(randomForest)
+```
+
+```{r}
+# קריאת הנתונים
+df <- read_csv("C:/Users/elias/OneDrive/שולחן העבודה/Sleep_health_and_lifestyle_dataset.csv") %>%
+  clean_names()  # להפוך שמות עמודות ל-snake_case
+
+# תצוגה כללית של הנתונים
+glimpse(df)
+skim(df)
+```
+
+1. **Data Cleaning**
+
+```{r}
+# Remove `person_id` and `occupation` as they are not useful for our analysis
+df_clean <- df %>%
+  select(-person_id, -occupation)
+```
+
+```{r}
+# Remove `person_id` and `occupation` as they are not useful for our analysis
+df_clean <- df %>%
+  select(-person_id, -occupation)
+```
+
+```{r}
+# Remove `person_id` and `occupation` as they are not useful for our analysis
+df_clean <- df %>%
+  select(-person_id, -occupation)
+```
+
+
+```{r}
+# Split the `blood_pressure` column into two numeric columns
+df_clean <- df_clean %>%
+  separate(blood_pressure, into = c("systolic", "diastolic"), sep = "/", convert = TRUE)
+
+```
+
+```{r}
+df_clean <- df_clean %>%
+  mutate(
+    bmi_category = str_replace_all(bmi_category, "Normal Weight", "Normal"),
+    bmi_category = factor(bmi_category, levels = c("Normal", "Overweight", "Obese")),
+    gender = factor(gender),
+    sleep_disorder = factor(sleep_disorder, levels = c("None", "Insomnia", "Sleep Apnea"))
+  )
+
+```
+
+```{r}
+glimpse(df_clean)
+summary(df_clean)
+```
+2. **Exploratory Data Analysis (EDA)**
+
+```{r}
+# Better: Faceted boxplots by variable
+df_clean %>%
+  select(age, sleep_duration, quality_of_sleep, physical_activity_level,
+         stress_level, systolic, diastolic, heart_rate, daily_steps) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value") %>%
+  ggplot(aes(y = value)) +
+  geom_boxplot(fill = "lightblue") +
+  facet_wrap(~variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Boxplots for Numeric Variables", y = NULL)
+
+
+```
+
+```{r}
+
+# Select numeric columns for standardization
+numeric_cols <- c(
+  "age",
+  "sleep_duration",
+  "quality_of_sleep",
+  "physical_activity_level",
+  "stress_level",
+  "heart_rate",
+  "daily_steps",
+  "systolic",
+  "diastolic"
+)
+
+# Apply standardization using scale()
+df_scaled <- df_clean
+
+df_scaled[numeric_cols] <- scale(df_clean[numeric_cols])
+
+
+```
+
+
+
+```{r}
+# Plot histograms for numeric variables
+df_scaled %>%
+  select(age, sleep_duration, quality_of_sleep, physical_activity_level,
+         stress_level, systolic, diastolic, heart_rate, daily_steps) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "value") %>%
+  ggplot(aes(x = value)) +
+  geom_histogram(fill = "steelblue", color = "white", bins = 30) +
+  facet_wrap(~variable, scales = "free") +
+  theme_minimal() +
+  labs(title = "Histograms for Numeric Variables", x = NULL, y = "Count")
+
+```
+
+```{r}
+# Frequency tables for categorical variables
+df_clean %>%
+  select(gender, bmi_category, sleep_disorder) %>%
+  map(~table(.))  # שימוש ב-purrr::map כדי להפיק טבלה לכל משתנה
+
+
+```
+
+```{r}
+# קשר בין BMI Category לבין Sleep Disorder (גרף עמודות יחסי)
+ggplot(df_clean, aes(x = bmi_category, fill = sleep_disorder)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    title = "Proportion of Sleep Disorders by BMI Category",
+    x = "BMI Category",
+    y = "Percentage",
+    fill = "Sleep Disorder"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+# קשר בין Stress Level לבין Sleep Duration (scatterplot)
+ggplot(df_scaled, aes(x = stress_level, y = sleep_duration)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(
+    title = "Stress Level vs Sleep Duration",
+    x = "Stress Level (Standardized)",
+    y = "Sleep Duration (Standardized)"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+# איכות שינה מול Sleep Disorder (boxplot)
+ggplot(df_clean, aes(x = sleep_disorder, y = quality_of_sleep, fill = sleep_disorder)) +
+  geom_boxplot() +
+  labs(
+    title = "Quality of Sleep by Sleep Disorder",
+    x = "Sleep Disorder",
+    y = "Quality of Sleep"
+  ) +
+  theme_minimal()
+
+
+```
+```{r}
+ggplot(df, aes(x = `sleep_disorder`, y = `stress_level`, fill = `sleep_disorder`)) +
+  geom_boxplot() +
+  labs(title = "Stress Level by Sleep Disorder", x = "Sleep Disorder", y = "Stress Level")
+```
+
+```{r}
+
+# יצירת מטריצת קורלציה
+cor_matrix <- cor(df_clean %>% select(all_of(numeric_cols)), use = "complete.obs")
+
+# הצגת מטריצת הקורלציה
+corrplot::corrplot(cor_matrix, method = "color", type = "upper", tl.cex = 0.8)
+
+
+```
+
+```{r}
+# טבלת שכיחויות רגילה
+table(df_clean$sleep_disorder)
+
+# גרף שכיחויות
+ggplot(df_clean, aes(x = sleep_disorder, fill = sleep_disorder)) +
+  geom_bar() +
+  labs(title = "Distribution of Sleep Disorder Categories") +
+  theme_minimal()
+
+```
+
+
+3. **Feature Engineering**
+
+```{r}
+
+# Feature engineering
+df_engineered <- df_clean %>%
+  mutate(
+    # BMI Numeric Ordinal
+    bmi_numeric = case_when(
+      bmi_category == "Normal" ~ 0,
+      bmi_category == "Overweight" ~ 1,
+      bmi_category == "Obese" ~ 2
+    ),
+    
+    # Sleep Efficiency: Quality divided by Duration
+    sleep_efficiency = quality_of_sleep / sleep_duration
+  )
+
+```
+
+4. **Train-Test Split**
+
+```{r}
+
+set.seed(123)  # לשחזוריות
+split <- initial_split(df_engineered, prop = 0.8, strata = sleep_disorder)
+train_data <- training(split)
+test_data <- testing(split)
+
+```
+
+5. **Modeling and Evaluation (Multinomial Logistic Regression)**
+
+```{r}
+recipe_model <- recipe(sleep_disorder ~ ., data = train_data) %>%
+  step_rm(bmi_category) %>%  # הסרה
+  step_dummy(all_nominal_predictors()) %>%  # כולל gender ו־bmi_category
+  step_zv(all_predictors())                 # מסיר משתנים ללא שונות
+
+
+```
+
+```{r}
+recipe_prep <- prep(recipe_model)
+train_prepared <- bake(recipe_prep, new_data = train_data)
+test_prepared  <- bake(recipe_prep, new_data = test_data)
+# התאמה של מודל רגרסיה לוגיסטית רב-קטגורית
+model <- multinom(sleep_disorder ~ ., data = train_prepared)
+```
+6. **Feature Importance Analysis (Multinomial Logistic Regression)**
+
+```{r}
+summary(model)
+
+```
+
+```{r}
+predictions <- predict(model, newdata = test_prepared)
+
+# מטריצת בלבול
+confusion_matrix <- table(Predicted = predictions, Actual = test_prepared$sleep_disorder)
+
+# דיוק
+accuracy <- mean(predictions == test_prepared$sleep_disorder)
+
+confusion_matrix
+accuracy
+
+
+```
+
+```{r}
+# שמות הקלאסים
+classes <- colnames(confusion_matrix)
+
+# יצירת טבלה ריקה לאחסון התוצאות
+metrics <- data.frame(
+  Class = classes,
+  Precision = numeric(length(classes)),
+  Recall = numeric(length(classes)),
+  F1 = numeric(length(classes))
+)
+
+# לולאה על כל מחלקה
+for (i in seq_along(classes)) {
+  class <- classes[i]
+  
+  TP <- confusion_matrix[class, class]
+  FP <- sum(confusion_matrix[class, ]) - TP
+  FN <- sum(confusion_matrix[, class]) - TP
+
+  precision <- if ((TP + FP) == 0) NA else TP / (TP + FP)
+  recall    <- if ((TP + FN) == 0) NA else TP / (TP + FN)
+  f1        <- if (is.na(precision) || is.na(recall) || (precision + recall) == 0) NA else 2 * precision * recall / (precision + recall)
+  
+  metrics[i, "Precision"] <- precision
+  metrics[i, "Recall"] <- recall
+  metrics[i, "F1"] <- f1
+}
+
+metrics
+
+
+```
+
+```{r}
+# ממוצע macro – ממוצע פשוט של המדדים (מתאים לקבוצות לא מאוזנות)
+macro_precision <- mean(metrics$Precision, na.rm = TRUE)
+macro_recall <- mean(metrics$Recall, na.rm = TRUE)
+macro_f1 <- mean(metrics$F1, na.rm = TRUE)
+
+cat("Macro Precision:", macro_precision, "\n")
+cat("Macro Recall:", macro_recall, "\n")
+cat("Macro F1:", macro_f1, "\n")
+
+
+```
+
+5. **Modeling and Evaluation (Random Forest)**
+```{r}
+
+# התאמת מודל Random Forest על נתוני האימון
+rf_model <- randomForest(
+  sleep_disorder ~ ., 
+  data = train_prepared, 
+  ntree = 100,            # מספר עצים
+  importance = TRUE       # שמירה על חשיבות משתנים
+)
+
+
+```
+
+6. **Feature Importance Analysis (Random Forest)**
+
+```{r}
+# חיזוי על test set
+rf_predictions <- predict(rf_model, newdata = test_prepared)
+
+```
+```{r}
+# מטריצת בלבול
+rf_confusion_matrix <- table(Predicted = rf_predictions, Actual = test_prepared$sleep_disorder)
+
+# חישוב דיוק
+rf_accuracy <- mean(rf_predictions == test_prepared$sleep_disorder)
+
+# תצוגה
+print(rf_confusion_matrix)
+cat("Accuracy:", rf_accuracy, "\n")
+
+
+```
+
+```{r}
+# שמות הקלאסים
+rf_classes <- colnames(rf_confusion_matrix)
+
+# טבלת ביצועים ריקה
+rf_metrics <- data.frame(
+  Class = rf_classes,
+  Precision = numeric(length(rf_classes)),
+  Recall = numeric(length(rf_classes)),
+  F1 = numeric(length(rf_classes))
+)
+
+# חישוב לפי כל מחלקה
+for (i in seq_along(rf_classes)) {
+  class <- rf_classes[i]
+  
+  TP <- rf_confusion_matrix[class, class]
+  FP <- sum(rf_confusion_matrix[class, ]) - TP
+  FN <- sum(rf_confusion_matrix[, class]) - TP
+
+  precision <- if ((TP + FP) == 0) NA else TP / (TP + FP)
+  recall    <- if ((TP + FN) == 0) NA else TP / (TP + FN)
+  f1        <- if (is.na(precision) || is.na(recall) || (precision + recall) == 0) NA else 2 * precision * recall / (precision + recall)
+  
+  rf_metrics[i, "Precision"] <- precision
+  rf_metrics[i, "Recall"] <- recall
+  rf_metrics[i, "F1"] <- f1
+}
+
+rf_metrics
+
+
+```
+
+
+
+```{r}
+rf_macro_precision <- mean(rf_metrics$Precision, na.rm = TRUE)
+rf_macro_recall <- mean(rf_metrics$Recall, na.rm = TRUE)
+rf_macro_f1 <- mean(rf_metrics$F1, na.rm = TRUE)
+
+cat("Random Forest - Macro Precision:", rf_macro_precision, "\n")
+cat("Random Forest - Macro Recall:", rf_macro_recall, "\n")
+cat("Random Forest - Macro F1:", rf_macro_f1, "\n")
+
+
+
+```
+
+```{r}
+comparison <- data.frame(
+  Model = c("Multiclass Logistic Regression", "Random Forest"),
+  Accuracy = c(accuracy, rf_accuracy),
+  Macro_Precision = c(macro_precision, rf_macro_precision),
+  Macro_Recall = c(macro_recall, rf_macro_recall),
+  Macro_F1 = c(macro_f1, rf_macro_f1)
+)
+comparison
+
+```
+
+```{r}
+# חשיבות משתנים - Random Forest
+varImpPlot(rf_model)
+
+```
+```{r}
+### --- חיזוי על סט האימון (Train) עבור לוגיסטי ---
+logit_train_preds <- predict(model, newdata = train_prepared)
+logit_train_cm <- table(Predicted = logit_train_preds, Actual = train_prepared$sleep_disorder)
+logit_train_accuracy <- mean(logit_train_preds == train_prepared$sleep_disorder)
+
+# חישוב Precision/Recall/F1 ל־Train
+logit_train_metrics <- data.frame(Class = colnames(logit_train_cm), Precision = NA, Recall = NA, F1 = NA)
+
+for (i in seq_along(logit_train_metrics$Class)) {
+  class <- logit_train_metrics$Class[i]
+  TP <- logit_train_cm[class, class]
+  FP <- sum(logit_train_cm[class, ]) - TP
+  FN <- sum(logit_train_cm[, class]) - TP
+  precision <- if ((TP + FP) == 0) NA else TP / (TP + FP)
+  recall <- if ((TP + FN) == 0) NA else TP / (TP + FN)
+  f1 <- if (is.na(precision) || is.na(recall) || (precision + recall) == 0) NA else 2 * precision * recall / (precision + recall)
+  
+  logit_train_metrics[i, "Precision"] <- precision
+  logit_train_metrics[i, "Recall"] <- recall
+  logit_train_metrics[i, "F1"] <- f1
+}
+
+logit_train_macro_precision <- mean(logit_train_metrics$Precision, na.rm = TRUE)
+logit_train_macro_recall <- mean(logit_train_metrics$Recall, na.rm = TRUE)
+logit_train_macro_f1 <- mean(logit_train_metrics$F1, na.rm = TRUE)
+
+### --- חיזוי על סט האימון (Train) עבור Random Forest ---
+rf_train_preds <- predict(rf_model, newdata = train_prepared)
+rf_train_cm <- table(Predicted = rf_train_preds, Actual = train_prepared$sleep_disorder)
+rf_train_accuracy <- mean(rf_train_preds == train_prepared$sleep_disorder)
+
+rf_train_metrics <- data.frame(Class = colnames(rf_train_cm), Precision = NA, Recall = NA, F1 = NA)
+
+for (i in seq_along(rf_train_metrics$Class)) {
+  class <- rf_train_metrics$Class[i]
+  TP <- rf_train_cm[class, class]
+  FP <- sum(rf_train_cm[class, ]) - TP
+  FN <- sum(rf_train_cm[, class]) - TP
+  precision <- if ((TP + FP) == 0) NA else TP / (TP + FP)
+  recall <- if ((TP + FN) == 0) NA else TP / (TP + FN)
+  f1 <- if (is.na(precision) || is.na(recall) || (precision + recall) == 0) NA else 2 * precision * recall / (precision + recall)
+  
+  rf_train_metrics[i, "Precision"] <- precision
+  rf_train_metrics[i, "Recall"] <- recall
+  rf_train_metrics[i, "F1"] <- f1
+}
+
+rf_train_macro_precision <- mean(rf_train_metrics$Precision, na.rm = TRUE)
+rf_train_macro_recall <- mean(rf_train_metrics$Recall, na.rm = TRUE)
+rf_train_macro_f1 <- mean(rf_train_metrics$F1, na.rm = TRUE)
+
+### --- טבלת השוואה ---
+overfit_comparison <- data.frame(
+  Model = rep(c("Logistic Regression", "Random Forest"), each = 2),
+  Dataset = rep(c("Train", "Test"), times = 2),
+  Accuracy = c(logit_train_accuracy, accuracy, rf_train_accuracy, rf_accuracy),
+  Macro_Precision = c(logit_train_macro_precision, macro_precision, rf_train_macro_precision, rf_macro_precision),
+  Macro_Recall = c(logit_train_macro_recall, macro_recall, rf_train_macro_recall, rf_macro_recall),
+  Macro_F1 = c(logit_train_macro_f1, macro_f1, rf_train_macro_f1, rf_macro_f1)
+)
+
+print(overfit_comparison)
+
+
+```
+
+
+
